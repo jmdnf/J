@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# ----------------------------------------------------
+# Filename:	installDNF
+# Revision:	1.2
+# Date:		2016/06/22
+# Author:	ilaoniu(老牛)
+# Email:	718053767@qq.com
+# Website:	bbs.ilaoniu.cn
+# Description:	install DNFServer on CentOS
+# Copyright:	2016(c)ilaoniu.cn
+# ----------------------------------------------------
+
+#安装DNF服务端程序
+function installDNF() {
+	clear
+	cd /root/
+	service iptables stop
+	chkconfig iptables off
+	echo "即将开始全自动安装，可能需要几分钟的时间......"
+	sleep 2
+	echo "STEP1（1/8）------获取服务器外网IP......"
+	
+	wget -O /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-5.repo
+	yum makecache
+	IP=`curl members.3322.org/dyndns/getip`
+	clear
+	echo "STEP2（2/8）------安装支持库......"
+	yum -y install glibc.i686
+	yum -y install xulrunner.i386
+	yum -y install libXtst
+	yum -y install gcc gcc-c++ make zlib-devel
+	clear
+	echo "STEP3（3/8）------安装数据库......"
+	yum -y remove mysql-libs.x86_64
+	yum install -y mysql mysql-server mysql-devel
+	yum install -y httpd php php-mysql
+	service httpd restart
+	chkconfig httpd on
+	chkconfig mysqld on
+	clear
+	echo "STEP4（4/8）------下载服务端程序......"
+#服务端下载地址，用自己的，该链接9月底失效
+	wget -O DNFServer.tar.gz http://download.ilaoniu.cn/dnf/package/DNFServer.tar.gz
+	tar -zxvf ./DNFServer.tar.gz -C /
+	clear
+	echo "STEP5（5/8）------设置对应权限......"
+	chmod -R 777 /home
+	chmod -R 777 /root
+	chmod -R 777 /var/lib/mysql
+	chown -R mysql.mysql /var/lib/mysql/
+	service mysqld restart
+	clear
+	echo "STEP6（6/8）------编译GeoIP......"
+	cd /home/GeoIP-1.4.8/
+	./configure
+	make && make check && make install
+	cd /home/dxf/
+	sed -i "s/192.168.200.131/${IP}/g" `find . -type f -name "*.tbl"`
+	sed -i "s/192.168.200.131/${IP}/g" `find . -type f -name "*.cfg"`
+}
+
+#修改数据库
+function updateMysql() {
+	clear
+	echo "STEP7（7/8）------配置数据库......"
+	IP2=`curl members.3322.org/dyndns/getip`
+	HOSTNAME=${IP2}
+	PORT="3306"
+	USERNAME="root"
+	PASSWORD="88888888"
+	DBNAME="d_taiwan"
+	DBNAME2="mysql"
+	update="update db_connect set db_ip='${HOSTNAME}' where db_ip='192.168.200.131'"
+	delete="delete from user where User='root'"
+	refresh="flush privileges"
+	mysql -h${HOSTNAME} -P${PORT} -u${USERNAME} -p${PASSWORD} ${DBNAME} -e "${update}"
+	mysql -h${HOSTNAME} -P${PORT} -u${USERNAME} -p${PASSWORD} ${DBNAME2} -e "${delete}"
+	mysql -h${HOSTNAME} -P${PORT} -u${USERNAME} -p${PASSWORD} ${DBNAME} -e "${refresh}"
+}
+
+#清理临时文件
+function remvTemFile() {
+	clear
+	cd /root/
+	rm -f /root/DNFServer.tar.gz
+	rm -f /root/installDNF
+}
+
+#挂载虚拟缓存，默认大小为8G
+function mountSwap() {
+	clear
+	echo "STEP8（8/8）------挂载虚拟内存......"
+	mkdir /swap
+	dd if=/dev/zero of=/swap/mySwap bs=1M count=8192
+	mkswap /swap/mySwap
+	swapon /swap/mySwap
+	sed -i '$a /swap/mySwap swap swap default 0 0' /etc/fstab
+}
+
+function install() {
+	clear
+	echo "---------------------------------------"
+	echo "爱老牛社区DNF服务端一键安装程序Ver1.2"
+	echo "作者：老牛"
+	echo "论坛支持：bbs.ilaoniu.cn"
+	echo "更新时间：2016年06月22日"
+	echo "---------------------------------------"
+
+	installDNF
+	updateMysql
+	remvTemFile
+	mountSwap
+	clear
+	echo "---------------------------------------"
+	echo "恭喜，服务端程序安装完成！！！"
+
+}
+
+install
